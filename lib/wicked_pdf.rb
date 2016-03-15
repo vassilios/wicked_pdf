@@ -76,9 +76,14 @@ class WickedPdf
 
     print_command(command.inspect) if in_development_mode?
 
-    err = Open3.popen3(*command) do |_stdin, _stdout, stderr|
-      stderr.read
-    end
+    generated_error_file = WickedPdfTempfile.new('wicked_pdf_generated_file.error', options[:temp_path])
+    # Use spawn instead of popen3
+    # popen3 uses fork which requires more memory than the parent process!
+    pid = Process.spawn(*command, :err => generated_error_file.path.to_s)
+    Process.wait(pid)
+    # err = Open3.popen3(*command) do |_stdin, _stdout, stderr|
+    #   stderr.read
+    # end
     if options[:return_file]
       return_file = options.delete(:return_file)
       return generated_pdf_file
@@ -86,6 +91,8 @@ class WickedPdf
     generated_pdf_file.rewind
     generated_pdf_file.binmode
     pdf = generated_pdf_file.read
+    generated_error_file.rewind
+    err = generated_error_file.read
     fail "PDF could not be generated!\n Command Error: #{err}" if pdf && pdf.rstrip.length == 0
     pdf
   rescue => e
